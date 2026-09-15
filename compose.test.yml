@@ -1,0 +1,37 @@
+name: trading-assistant-tests
+
+services:
+  postgres-test:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: trading_assistant_test
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test_only
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d trading_assistant_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+  backend-test:
+    build:
+      context: ./docker/backend
+      args:
+        GO_VERSION: ${GO_VERSION:-1.27.1}
+        AIR_VERSION: ${AIR_VERSION:-v1.67.3}
+    working_dir: /app
+    environment:
+      TEST_DATABASE_URL: postgres://test:test_only@postgres-test:5432/trading_assistant_test?sslmode=disable
+    volumes:
+      - ./backend:/app:ro
+      - test_go_modules:/go/pkg/mod
+      - test_go_build:/root/.cache/go-build
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    command: ["go", "test", "-mod=readonly", "-tags=integration", "-count=1", "-v", "./..."]
+
+volumes:
+  test_go_modules:
+  test_go_build:

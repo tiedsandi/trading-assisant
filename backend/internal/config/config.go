@@ -11,6 +11,7 @@ type Config struct {
 	Environment string
 	HTTPHost    string
 	HTTPPort    string
+	DatabaseURL string
 }
 
 func Load() (Config, error) {
@@ -18,6 +19,7 @@ func Load() (Config, error) {
 		Environment: envOrDefault("APP_ENV", "development"),
 		HTTPHost:    envOrDefault("HTTP_HOST", "0.0.0.0"),
 		HTTPPort:    envOrDefault("HTTP_PORT", "8080"),
+		DatabaseURL: os.Getenv("DATABASE_URL"),
 	}
 	port, err := strconv.Atoi(cfg.HTTPPort)
 	if err != nil || port < 1 || port > 65535 {

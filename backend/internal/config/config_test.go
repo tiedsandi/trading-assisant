@@ -60,3 +60,15 @@ func TestAddressIPv6(t *testing.T) {
 		t.Fatalf("Address() = %q, want [::1]:8080", got)
 	}
 }
+
+func TestLoadDatabaseURL(t *testing.T) {
+	t.Setenv("HTTP_PORT", "8080")
+	t.Setenv("DATABASE_URL", "postgres://localhost/example")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DatabaseURL != "postgres://localhost/example" {
+		t.Fatal("DATABASE_URL was not loaded")
+	}
+}

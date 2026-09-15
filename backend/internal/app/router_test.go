@@ -9,7 +9,7 @@ import (
 
 func TestHealth(t *testing.T) {
 	response := httptest.NewRecorder()
-	NewHandler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/health", nil))
+	NewHandler(nil).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/health", nil))
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", response.Code)
 	}
@@ -36,10 +36,12 @@ func TestRouting(t *testing.T) {
 		{http.MethodPost, "/health", http.StatusMethodNotAllowed},
 		{http.MethodGet, "/missing", http.StatusNotFound},
 		{http.MethodGet, "/health/extra", http.StatusNotFound},
+		{http.MethodPost, "/ready", http.StatusMethodNotAllowed},
+		{http.MethodGet, "/ready/extra", http.StatusNotFound},
 	} {
 		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
 			response := httptest.NewRecorder()
-			NewHandler().ServeHTTP(response, httptest.NewRequest(tc.method, tc.path, nil))
+			NewHandler(nil).ServeHTTP(response, httptest.NewRequest(tc.method, tc.path, nil))
 			if response.Code != tc.status {
 				t.Fatalf("status = %d, want %d", response.Code, tc.status)
 			}

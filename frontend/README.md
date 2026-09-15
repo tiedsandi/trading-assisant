@@ -101,7 +101,7 @@ Dari root repository, saat frontend berjalan:
 ```powershell
 docker compose exec frontend bun run lint
 docker compose exec frontend bun run typecheck
-docker compose exec frontend bun --bun run build
+docker compose run --rm --no-deps -e NODE_ENV=production frontend bun --bun run build
 ```
 
 Konfigurasi Jest sudah tersedia; lakukan instalasi satu kali di bagian Testing.

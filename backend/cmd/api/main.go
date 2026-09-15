@@ -12,6 +12,7 @@ import (
 
 	"trading-assistant/backend/internal/app"
 	"trading-assistant/backend/internal/config"
+	"trading-assistant/backend/internal/platform/database"
 )
 
 func main() {
@@ -31,9 +32,15 @@ func run(logger *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	pool, err := database.Open(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
 	server := &http.Server{
 		Addr:              cfg.Address(),
-		Handler:           app.NewHandler(),
+		Handler:           app.NewHandler(pool.Ping),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      15 * time.Second,

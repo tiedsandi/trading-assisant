@@ -64,7 +64,7 @@ password yang sudah tersimpan di database.
 ```powershell
 docker compose exec frontend bun run lint
 docker compose exec frontend bun run typecheck
-docker compose exec frontend bun --bun run build
+docker compose run --rm --no-deps -e NODE_ENV=production frontend bun --bun run build
 docker compose logs -f postgres
 docker compose down
 ```
@@ -92,14 +92,17 @@ lokal ingin dibawa.
 Backend sudah diinisialisasi dan kode server mendengarkan `0.0.0.0:8080` secara default.
 Jalankan backend dengan `docker compose up -d --build backend`, lalu periksa
 `http://localhost:8080/health`. Panduan test dan hot reload ada di [README backend](backend/README.md).
-Pengguna sudah mengonfirmasi `/health` dapat diakses; hasil test belum dikonfirmasi. `/health` hanya memeriksa proses HTTP,
-bukan koneksi database. Tahap berikutnya adalah integrasi PostgreSQL menggunakan pgx
-dan pemeriksaan kesiapan database. Router chi ditambahkan ketika penataan API dimulai.
+Pengguna sudah mengonfirmasi `/health`, test awal Go, Jest, lint, typecheck, dan
+build frontend berhasil. `/health` hanya memeriksa proses HTTP, bukan database.
+Kode koneksi pgx dan `/ready` kini tersedia; pasang dependency dan jalankan test
+baru mengikuti [README backend](backend/README.md#postgresql-dan-readiness).
+Integration test menggunakan `compose.test.yml` dengan database sementara terpisah.
+Hasil test tahap database belum dikonfirmasi. Router chi ditambahkan ketika penataan API dimulai.
 Untuk menjalankan semua service gunakan `docker compose up -d --build`.
 
 Konfigurasi Jest frontend dan test bawaan Go sudah disiapkan. Instalasi dependency
 Jest serta perintah test ada di [README frontend](frontend/README.md#testing-dengan-jest)
 dan [README backend](backend/README.md#testing-bawaan-go). Jest dijalankan dengan Node.js
 di image frontend; Bun tetap digunakan untuk instalasi paket dan Next.js.
-Dependency Jest perlu dipasang pengguna sebelum test/typecheck frontend berikutnya.
+Untuk clone baru, pasang dependency sesuai lockfile sebelum menjalankan pemeriksaan.
 Belum ada autentikasi, fitur trading, Redis, atau worker.

@@ -7,7 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node ./node_modules/jest/bin/jest.js --runInBand",
+    "test:watch": "node ./node_modules/jest/bin/jest.js --watchAll --runInBand",
+    "test:coverage": "node ./node_modules/jest/bin/jest.js --coverage --runInBand",
+    "test:ci": "node ./node_modules/jest/bin/jest.js --ci --coverage --runInBand"
   },
   "dependencies": {
     "next": "16.3.5",

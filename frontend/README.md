@@ -17,7 +17,7 @@ ada di [README root](../README.md).
 | `src/config` | Konfigurasi dan konstanta aplikasi | `navigation.ts` untuk daftar menu |
 | `src/types` | Tipe generik yang benar-benar dipakai bersama | `pagination.ts` |
 | `public` | Aset statis yang boleh diakses publik | Gambar dan ikon; jangan simpan secret |
-| `tests` | Pengujian lintas fitur atau integrasi | Skenario alur membuat trading plan setelah runner tersedia |
+| `tests` | Test halaman atau skenario lintas fitur | `home.test.tsx` untuk halaman awal |
 | `documentations` | Penjelasan keputusan/pola teknis yang tidak cukup jelas dari kode | `api-client.md` setelah integrasi API dibuat |
 
 Folder kosong memakai `.gitkeep` agar ikut Git. Tambahkan subfolder fitur
@@ -46,7 +46,7 @@ Halaman dan aset saat ini masih bawaan Next.js.
    interaksi yang relevan. Validasi frontend membantu UX; backend tetap menjadi
    sumber validasi dan perhitungan bisnis trading.
 6. Jalankan pemeriksaan di bawah, lalu uji alur normal dan error di browser.
-   Tambahkan pengujian otomatis yang sesuai ketika test runner sudah tersedia.
+   Tambahkan test perilaku yang relevan menggunakan Jest dan React Testing Library.
 7. Review perubahan, perbarui dokumentasi jika pola teknis berubah, lalu commit
    hanya file terkait. Jangan commit `.env`, dependency, atau hasil build.
 
@@ -60,7 +60,8 @@ src/
 └── features/
     └── trading-plan/
         ├── components/
-        │   └── trading-plan-form.tsx
+        │   ├── trading-plan-form.tsx
+        │   └── trading-plan-form.test.tsx
         ├── api/
         │   └── create-trading-plan.ts
         └── types.ts
@@ -103,8 +104,9 @@ docker compose exec frontend bun run typecheck
 docker compose exec frontend bun --bun run build
 ```
 
-Belum ada test runner atau pengujian fitur. Commit `bun.lock` bersama perubahan
-`package.json`. Gunakan Bun secara konsisten sebagai package manager.
+Konfigurasi Jest sudah tersedia; lakukan instalasi satu kali di bagian Testing.
+Commit `bun.lock` bersama perubahan `package.json`. Gunakan Bun secara konsisten
+sebagai package manager.
 
 Lint memeriksa aturan kode, typecheck memeriksa tipe, dan build memeriksa apakah
 aplikasi bisa dibangun. Ketiganya tidak menggantikan pengujian perilaku di browser.
@@ -116,6 +118,60 @@ Fondasi yang tersedia: scaffold Next.js, TypeScript strict, ESLint Next.js/TypeS
 Tailwind, Bun lockfile, konfigurasi Docker development, dan folder kerja.
 Status lulus lint/typecheck/build perlu dibuktikan dengan menjalankan perintah di atas.
 
-Prettier, Husky, lint-staged, test runner, autentikasi, API client, state/query library,
+Prettier, Husky, lint-staged, autentikasi, API client, state/query library,
 serta UI bisnis belum disiapkan. Tambahkan bertahap sesuai task. README ini cukup
 untuk petunjuk teknis awal; PRD dan roadmap tetap di luar repository.
+
+## Testing dengan Jest
+
+Jest + React Testing Library menggunakan konfigurasi `next/jest` dan lingkungan
+DOM jsdom. Bun tetap memasang paket. Script test secara eksplisit menjalankan
+Jest dengan Node.js, yang disediakan oleh image Docker frontend.
+Jalankan `bun run test`, bukan `bun test` (runner Bun yang berbeda).
+
+Instalasi satu kali, dari root repository (oleh pengguna):
+
+```powershell
+docker compose run --rm --no-deps --build frontend bun add -d jest@30 jest-environment-jsdom@30 @types/jest@30 @testing-library/react@16 @testing-library/dom@10 @testing-library/jest-dom@6
+```
+
+Perintah ini memperbarui `package.json` dan `bun.lock` serta memasang dependency
+ke volume Docker. Keduanya perlu di-commit bersama. Konfigurasi saja belum cukup
+untuk menjalankan test; dependency belum dipasang oleh asisten.
+Pada clone setelah lockfile diperbarui, gunakan `bun install --frozen-lockfile`
+di container, bukan mengulang `bun add`.
+
+Jalankan test tanpa memerlukan server Next.js/backend/database aktif:
+
+```powershell
+docker compose run --rm --no-deps frontend bun run test
+docker compose run --rm --no-deps frontend bun run test:watch
+docker compose run --rm --no-deps frontend bun run test:ci
+```
+
+`test` berjalan sekali; `test:watch` mengulang saat source berubah (`Ctrl+C` untuk
+berhenti). `test:ci` berjalan sekali dengan coverage dan gagal jika test gagal.
+Coverage disimpan di `frontend/coverage/`, tidak ikut Git. Tidak ada opsi
+`passWithNoTests`: suite kosong harus gagal. `test:coverage` tersedia untuk laporan lokal.
+
+`tests/home.test.tsx` adalah smoke test scaffold halaman awal, bukan bukti fitur
+bisnis telah benar. Ganti assertion-nya saat halaman berubah. Untuk kode khusus
+fitur, letakkan `*.test.ts(x)` dekat source; skenario lintas komponen di `tests/`.
+Semua test menggunakan alias `@/*` yang sama dengan aplikasi.
+
+Test komponen, hook, dan fungsi khusus fitur berada di
+`src/features/<nama-fitur>/`, bersebelahan dengan file yang diuji.
+Test komponen bersama juga bersebelahan dengan source di `src/components/`.
+Folder `tests/` bukan tempat wajib untuk semua test. Jest mencari file
+`*.test.ts` dan `*.test.tsx` di kedua lokasi tanpa perubahan konfigurasi.
+
+Uji perilaku yang terlihat pengguna, memakai role/label. Untuk fitur baru,
+uji input valid/tidak valid, loading, kosong, sukses, dan error yang relevan.
+Mock batas eksternal seperti API; jangan mock fungsi yang justru sedang diuji.
+Hindari snapshot besar dan assertion terhadap class CSS untuk membuktikan perilaku.
+Coverage adalah petunjuk bagian yang belum diuji, bukan bukti bebas bug.
+
+Layout tidak masuk coverage komponen saat ini. Async Server Components dan alur
+browser nyata memerlukan strategi E2E berikutnya; suite ini belum mencakupnya.
+Lihat [panduan Jest Next.js](https://nextjs.org/docs/app/guides/testing/jest).
+Hasil PASS belum dikonfirmasi sampai perintah dijalankan oleh pengguna.

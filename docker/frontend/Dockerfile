@@ -1,5 +1,9 @@
 ARG BUN_VERSION=1.4.2
+FROM node:24-bookworm-slim AS node-runtime
 FROM oven/bun:${BUN_VERSION}-debian
+
+# Jest runs on Node; Bun remains the package manager and Next.js runtime.
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 
 WORKDIR /app
 

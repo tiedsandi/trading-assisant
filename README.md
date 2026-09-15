@@ -5,7 +5,7 @@ Panduan teknis development. PRD dan perencanaan produk dikelola di luar reposito
 ## Status dan struktur
 
 Frontend sudah diinisialisasi dengan Next.js 16, React 19, TypeScript, Tailwind CSS 4,
-dan Bun 1.4.2. Backend masih kosong; konfigurasi Go + Air sudah tersedia.
+dan Bun 1.4.2. Backend memiliki server HTTP minimal dan endpoint `/health`, dengan Go + Air.
 PostgreSQL 18 dijalankan melalui Docker Compose. Setup ini khusus development.
 
 ```text
@@ -16,7 +16,7 @@ trading-assistant/
 ├── .env.example
 ├── compose.yml
 ├── frontend/                 # Lihat frontend/README.md
-├── backend/                  # Belum diinisialisasi
+├── backend/                  # Server HTTP; lihat backend/README.md
 └── docker/
     ├── frontend/Dockerfile   # Bun
     ├── backend/
@@ -49,7 +49,7 @@ log tidak menghentikan container. Jangan jalankan `create-next-app` lagi.
 | Frontend di browser | http://localhost:3000 |
 | Database dari komputer | localhost:15432 |
 | Database dari backend container | postgres:5432 |
-| Backend setelah diimplementasikan | http://localhost:8080 |
+| Backend (setelah container dijalankan) | http://localhost:8080/health |
 
 `.env` root dibaca Compose, lalu variabel yang tercantum pada `environment`
 diteruskan ke container. Tidak perlu menyalin `.env` ke frontend/backend.
@@ -89,9 +89,17 @@ lokal ingin dibawa.
 
 ## Berikutnya
 
-Backend belum dapat dijalankan. Task berikutnya: inisialisasi modul Go, buat
-`backend/cmd/api/main.go`, baca environment, dan sediakan endpoint `/health`.
-Server harus mendengarkan `0.0.0.0:8080`. Setelah backend tersedia, jalankan semua
-service dengan `docker compose up -d --build`.
+Backend sudah diinisialisasi dan kode server mendengarkan `0.0.0.0:8080` secara default.
+Jalankan backend dengan `docker compose up -d --build backend`, lalu periksa
+`http://localhost:8080/health`. Panduan test dan hot reload ada di [README backend](backend/README.md).
+Pengguna sudah mengonfirmasi `/health` dapat diakses; hasil test belum dikonfirmasi. `/health` hanya memeriksa proses HTTP,
+bukan koneksi database. Tahap berikutnya adalah integrasi PostgreSQL menggunakan pgx
+dan pemeriksaan kesiapan database. Router chi ditambahkan ketika penataan API dimulai.
+Untuk menjalankan semua service gunakan `docker compose up -d --build`.
 
-Belum ada test runner frontend, autentikasi, fitur trading, Redis, atau worker.
+Konfigurasi Jest frontend dan test bawaan Go sudah disiapkan. Instalasi dependency
+Jest serta perintah test ada di [README frontend](frontend/README.md#testing-dengan-jest)
+dan [README backend](backend/README.md#testing-bawaan-go). Jest dijalankan dengan Node.js
+di image frontend; Bun tetap digunakan untuk instalasi paket dan Next.js.
+Dependency Jest perlu dipasang pengguna sebelum test/typecheck frontend berikutnya.
+Belum ada autentikasi, fitur trading, Redis, atau worker.

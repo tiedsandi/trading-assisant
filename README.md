@@ -1,108 +1,78 @@
 # Trading Assistant
 
-Panduan teknis development. PRD dan perencanaan produk dikelola di luar repository.
-
-## Status dan struktur
-
-Frontend sudah diinisialisasi dengan Next.js 16, React 19, TypeScript, Tailwind CSS 4,
-dan Bun 1.4.2. Backend memiliki server HTTP minimal dan endpoint `/health`, dengan Go + Air.
-PostgreSQL 18 dijalankan melalui Docker Compose. Setup ini khusus development.
-
-```text
-trading-assistant/
-├── AGENTS.md
-├── CLAUDE.md
-├── README.md
-├── .env.example
-├── compose.yml
-├── frontend/                 # Lihat frontend/README.md
-├── backend/                  # Server HTTP; lihat backend/README.md
-└── docker/
-    ├── frontend/Dockerfile   # Bun
-    ├── backend/
-    │   ├── Dockerfile        # Go + Air
-    │   └── air.toml          # Build ./cmd/api dan hot reload
-    └── postgres/init/        # Script init hanya berjalan pada volume baru
-```
-
-Dockerfile tetap di `docker/`. Source aplikasi di-bind mount dari komputer.
-Dependency, cache build, dan data database disimpan dalam named volume Docker.
+Next.js + Bun frontend, Go `net/http` API, PostgreSQL 18. Authentication v1
+menyediakan register, login, sesi 7 hari, dashboard minimal, dan logout.
+Fitur trading belum diimplementasikan. Compose ini khusus development lokal.
 
 ## Menjalankan
 
-Aktifkan Docker Desktop dengan Linux containers. Jalankan dari root repository
-di PowerShell. Pada clone baru, buat `.env` jika belum tersedia:
+Aktifkan Docker Desktop dengan Linux containers, lalu dari root repository:
 
 ```powershell
 if (!(Test-Path .env)) { Copy-Item .env.example .env }
 docker compose config --quiet
-docker compose up -d --build postgres frontend
+docker compose up -d --build
 docker compose ps
-docker compose logs -f frontend
 ```
 
-Frontend memasang dependency sesuai `bun.lock` saat startup. `Ctrl+C` pada tampilan
-log tidak menghentikan container. Jangan jalankan `create-next-app` lagi.
+Frontend memasang dependency dari `bun.lock`. Service `migrate` menjalankan
+migration Goose sebelum backend dimulai; perubahan schema tidak bergantung pada
+inisialisasi volume PostgreSQL. Air menjalankan reload backend.
 
-| Akses | Alamat |
+| Akses | Default |
 | --- | --- |
-| Frontend di browser | http://localhost:3000 |
-| Database dari komputer | localhost:15432 |
-| Database dari backend container | postgres:5432 |
-| Backend (setelah container dijalankan) | http://localhost:8080/health |
+| Aplikasi / register / login | http://localhost:3000 |
+| Liveness backend | http://localhost:8080/health |
+| Readiness database | http://localhost:8080/ready |
+| PostgreSQL dari host | localhost:5432; `.env` lokal dapat memakai 15432 |
 
-`.env` root dibaca Compose, lalu variabel yang tercantum pada `environment`
-diteruskan ke container. Tidak perlu menyalin `.env` ke frontend/backend.
-`NEXT_PUBLIC_API_URL` untuk browser; `INTERNAL_API_URL` untuk server Next.js di Docker.
-Kode integrasi API belum dibuat. Jika port aplikasi diubah, sesuaikan URL dan CORS.
-Password database contoh hanya untuk lokal. Gunakan karakter URL-safe karena
-password dirangkai ke `DATABASE_URL`. Perubahan password di `.env` tidak mengubah
-password yang sudah tersimpan di database.
+`.env` root hanya dibaca Compose. `AUTH_ALLOWED_ORIGINS` berisi origin browser
+persis (mis. `http://localhost:3000`), dipisah koma jika lebih dari satu.
+Jika port frontend diubah, ubah origin tersebut juga. `INTERNAL_API_URL` adalah
+alamat Go dari server Next.js (`http://backend:8080` di Docker). Browser memakai
+`/api/auth/*` pada origin aplikasi. `NEXT_PUBLIC_API_URL` dan
+`CORS_ALLOWED_ORIGINS` lama tidak lagi digunakan.
 
-## Development
+## Migration dan pemeriksaan
 
 ```powershell
+docker compose run --rm migrate
+docker compose run --rm migrate go run -mod=readonly ./cmd/migrate status
+docker compose exec frontend bun run test
 docker compose exec frontend bun run lint
 docker compose exec frontend bun run typecheck
 docker compose run --rm --no-deps -e NODE_ENV=production frontend bun --bun run build
-docker compose logs -f postgres
-docker compose down
+docker compose exec backend go test -mod=readonly -count=1 ./...
+docker compose exec backend go vet ./...
+docker compose exec backend gofmt -l cmd internal db tests
+docker compose -p trading-assistant-tests -f compose.test.yml up --build --abort-on-container-exit --exit-code-from backend-test
+docker compose -p trading-assistant-tests -f compose.test.yml down
 ```
 
-Tambahkan paket melalui `docker compose exec frontend bun add NAMA_PAKET`.
-Commit `package.json` dan `bun.lock` bersama; gunakan Bun secara konsisten.
-Dependency berada di volume Linux; editor Windows mungkin belum dapat membaca
-tipe dari `node_modules` lokal.
+Service `migrate` dapat dijalankan ulang: versi yang sudah diterapkan tidak
+berjalan lagi. Setelah menambah migration saat container aktif, jalankan kembali
+migration secara eksplisit. Integration test memakai database tmpfs dan network
+terpisah, tanpa port host. Jangan menggabungkan kedua file Compose.
 
-Next.js menangani reload frontend, Air menangani backend. `WATCHPACK_POLLING`
-hanya berlaku untuk Webpack, bukan Turbopack bawaan Next.js. Jika perubahan file
-Windows tidak terdeteksi, coba Webpack setelah frontend berhasil diinstal:
+Detail ada di [backend](backend/README.md), [frontend](frontend/README.md), dan
+[konvensi](docs/ai/CONVENTIONS.md). Perintah rutin agen ada di [AGENTS.md](AGENTS.md).
 
-```powershell
-docker compose stop frontend
-docker compose run --rm --service-ports --no-deps frontend bun --bun run dev --webpack --hostname 0.0.0.0
-```
+## Deployment authentication
 
-`docker compose down` mempertahankan data. `down -v` menghapus volume, termasuk
-database. Volume tidak ikut Git; pindah laptop perlu backup/restore bila data
-lokal ingin dibawa.
+Gunakan HTTPS, `APP_ENV=production`, dan `AUTH_ALLOWED_ORIGINS` HTTPS yang eksplisit.
+Jalankan migration sebagai langkah deployment sebelum API menerima traffic.
+Cookie production bernama `__Host-ta_session`: Secure, HttpOnly, SameSite=Lax,
+Path=/, tanpa Domain. Development HTTP memakai `ta_session`. Next.js meneruskan
+Origin asli ke Go; jangan menggantinya dengan origin tepercaya pada reverse proxy.
 
-## Berikutnya
+Go adalah otoritas akses: endpoint protected harus memakai middleware auth dan
+mengambil ID pengguna dari context. Setiap query data milik pengguna di masa
+mendatang harus dibatasi oleh ID itu. Kredensial exchange terpisah dari login app.
 
-Backend sudah diinisialisasi dan kode server mendengarkan `0.0.0.0:8080` secara default.
-Jalankan backend dengan `docker compose up -d --build backend`, lalu periksa
-`http://localhost:8080/health`. Panduan test dan hot reload ada di [README backend](backend/README.md).
-Pengguna sudah mengonfirmasi `/health`, test awal Go, Jest, lint, typecheck, dan
-build frontend berhasil. `/health` hanya memeriksa proses HTTP, bukan database.
-Kode koneksi pgx dan `/ready` kini tersedia; pasang dependency dan jalankan test
-baru mengikuti [README backend](backend/README.md#postgresql-dan-readiness).
-Integration test menggunakan `compose.test.yml` dengan database sementara terpisah.
-Hasil test tahap database belum dikonfirmasi. Router chi ditambahkan ketika penataan API dimulai.
-Untuk menjalankan semua service gunakan `docker compose up -d --build`.
+PostgreSQL Compose memakai error verbosity `terse` dan menonaktifkan logging bind parameters
+agar kegagalan constraint tidak mencetak baris auth. Terapkan pengaturan setara di deployment.
 
-Konfigurasi Jest frontend dan test bawaan Go sudah disiapkan. Instalasi dependency
-Jest serta perintah test ada di [README frontend](frontend/README.md#testing-dengan-jest)
-dan [README backend](backend/README.md#testing-bawaan-go). Jest dijalankan dengan Node.js
-di image frontend; Bun tetap digunakan untuk instalasi paket dan Next.js.
-Untuk clone baru, pasang dependency sesuai lockfile sebelum menjalankan pemeriksaan.
-Belum ada autentikasi, fitur trading, Redis, atau worker.
+Password database contoh hanya untuk lokal. Simpan secret di environment yang
+terkelola dan jangan log request body/cookie. Untuk deployment publik, tetapkan
+pembatasan percobaan login pada ingress sesuai kapasitas dan topologi deployment.
+`docker compose down` mempertahankan data; `down -v` menghapus volume database.

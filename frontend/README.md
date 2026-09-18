@@ -1,147 +1,144 @@
 # Frontend
 
-Next.js App Router, TypeScript, Tailwind CSS, dan Bun. Cara menjalankan Docker
+Next.js App Router, React, TypeScript, Tailwind CSS 4, dan Bun. Authentication v1
+menggunakan shadcn/ui, React Hook Form, dan Zod. Cara menjalankan stack dan migrasi
 ada di [README root](../README.md).
+
+## Authentication v1
+
+| Route | Perilaku |
+| --- | --- |
+| `/` | Mengarahkan guest ke `/login`, user terautentikasi ke `/dashboard` |
+| `/register` | Email, password, konfirmasi; registrasi sukses langsung masuk dashboard |
+| `/login` | Email/password; kegagalan kredensial ditampilkan dengan pesan generik |
+| `/dashboard` | Memeriksa session di server, menampilkan email user dan aksi sign out |
+| `/api/auth/register`, `/api/auth/login`, `/api/auth/logout` | Proxy POST khusus autentikasi ke backend Go |
+| `/api/auth/me` | Proxy GET current user ke backend Go |
+
+User terautentikasi yang membuka login/register diarahkan ke dashboard. Setiap
+halaman memeriksa autentikasi di server; nama folder/layout atau state client
+bukan pengaman akses. Backend tetap memvalidasi session pada setiap endpoint
+terproteksi. Dashboard hanya shell akun, belum berisi fitur trading.
+
+### Form dan validasi
+
+- Email di-trim dan di-lowercase, lalu diperiksa sebagai alamat ASCII konvensional.
+- Registrasi menerima password 8–128 Unicode code points; tidak ada syarat
+  uppercase, angka, atau simbol. Password tidak di-trim.
+- Konfirmasi password hanya untuk frontend dan tidak dikirim ke backend.
+- React Hook Form memakai `onTouched`: error muncul setelah field kehilangan
+  fokus atau form disubmit, lalu diperbarui saat diketik. Petunjuk panjang password
+  diperbarui langsung; konfirmasi yang sudah disentuh juga diperiksa ulang ketika
+  password berubah.
+- Login hanya memerlukan bentuk email valid dan password tidak kosong; tidak
+  menerapkan ulang aturan panjang/strength registrasi.
+- Label, `aria-invalid`, deskripsi error, show/hide password, status submit, dan
+  tombol disabled tersedia. Kegagalan API ditampilkan tanpa menyalin error internal.
+- Logout menunggu revocation backend sebelum navigasi. Bila gagal, halaman tetap
+  terbuka dan user dapat mencoba lagi.
+
+### Request, cookie, dan proteksi
+
+Browser memanggil `/api/auth/*` pada origin frontend yang sama dengan
+`credentials: same-origin`. Route handler menerima hanya kombinasi action/metode
+yang diizinkan, meneruskan ke `/auth/*` melalui `INTERNAL_API_URL`, membatasi body
+16 KiB, dan memberi timeout upstream 10 detik. Client memakai timeout 15 detik.
+Tidak ada URL target dari browser atau redirect upstream yang diikuti.
+
+Proxy meneruskan `Origin` asli tanpa membuat/mengganti nilainya, Content-Type,
+dan hanya cookie `ta_session` / `__Host-ta_session`. Respons meneruskan status,
+body, Content-Type, dan Set-Cookie session; tidak meneruskan header internal lain.
+Semua respons auth memakai `Cache-Control: no-store`. Backend memeriksa Origin
+mutation terhadap `AUTH_ALLOWED_ORIGINS` dan mewajibkan JSON. Logout mengirim `{}`.
+Tidak ada CORS credentialed lintas origin atau token di localStorage/sessionStorage.
+
+Cookie ditetapkan oleh backend: HttpOnly, SameSite=Lax, Path=/, tanpa Domain,
+masa berlaku 7 hari. Development memakai `ta_session` pada HTTP localhost;
+production memakai Secure `__Host-ta_session` dengan HTTPS. `INTERNAL_API_URL`
+hanya berada di server; contoh Compose adalah `http://backend:8080`.
+
+`getCurrentUser()` memanggil backend `/auth/me` secara langsung dari server dengan
+cookie session, `cache: no-store`, dan timeout. Cookie yang tidak ada atau respons
+401 berarti guest. Kegagalan jaringan/server menjadi halaman error dengan retry,
+bukan dianggap logout. Hanya ID, email, dan waktu pembuatan user yang dipakai.
+Future protected pages harus memanggil pemeriksaan ini pada akses data/page,
+dan tetap memakai pemeriksaan autentikasi backend secara independen.
 
 ## Struktur kode
 
-| Folder | Fungsi | Contoh file saat diperlukan |
-| --- | --- | --- |
-| `src/app` | Routes, layout, metadata, dan komposisi halaman | `trading-plan/page.tsx` merangkai tampilan fitur |
-| `src/components/ui` | Komponen UI dasar yang tidak mengenal domain trading | `button.tsx`, `input.tsx` |
-| `src/components/common` | Komponen generik gabungan, dipakai lintas fitur | `empty-state.tsx`, `error-message.tsx` |
-| `src/components/layout` | Kerangka tampilan aplikasi | `app-header.tsx`, `app-sidebar.tsx` |
-| `src/features` | Kode khusus suatu fitur | `trading-plan/components/trading-plan-form.tsx` |
-| `src/hooks` | Hook generik lintas fitur | `use-debounce.ts` |
-| `src/lib` | Infrastruktur dan helper generik | `api-client.ts` untuk transport HTTP |
-| `src/config` | Konfigurasi dan konstanta aplikasi | `navigation.ts` untuk daftar menu |
-| `src/types` | Tipe generik yang benar-benar dipakai bersama | `pagination.ts` |
-| `public` | Aset statis yang boleh diakses publik | Gambar dan ikon; jangan simpan secret |
-| `tests` | Test halaman atau skenario lintas fitur | `home.test.tsx` untuk halaman awal |
-| `documentations` | Penjelasan keputusan/pola teknis yang tidak cukup jelas dari kode | `api-client.md` setelah integrasi API dibuat |
+| Lokasi | Tanggung jawab |
+| --- | --- |
+| `src/app` | Routes, layout, metadata, loading/error, dan komposisi halaman |
+| `src/app/api/auth/[action]/route.ts` | Entry point proxy autentikasi GET/POST |
+| `src/features/auth` | Form, shell akun, schema, client API, server auth, proxy, dan tests |
+| `src/components/ui` | Primitives shadcn/ui Button, Input, Label, Card, Alert |
+| `src/lib/utils.ts` | Helper `cn` untuk class Tailwind |
+| `tests/home.test.tsx` | Perilaku guest/authenticated pada home, login/register, dan dashboard |
+| `public` | Aset statis publik; jangan menyimpan secret |
 
-Folder kosong memakai `.gitkeep` agar ikut Git. Tambahkan subfolder fitur
-`auth`, `trading-plan`, `risk`, `journal`, dan `market` ketika mulai dikerjakan.
-Route groups `(auth)` dan `(protected)`, route `api`, `providers.tsx`, serta
-`proxy.ts` dibuat saat implementasi membutuhkannya. Nama `(protected)` sendiri
-bukan mekanisme pemeriksaan akses.
+Folder placeholder lain tetap tersedia untuk kebutuhan berikutnya. Jangan membuat
+provider, service wrapper, atau fitur masa depan hanya untuk mengisi struktur.
+Logika domain berada di `src/features/<fitur>`; route merangkai halaman. Komponen
+hanya dipindah ke folder bersama jika memang dipakai lintas fitur.
 
-Logika bisnis khusus fitur berada di `src/features/<fitur>`, bukan di route.
-Komponen/hook/tipe tetap dekat fitur sampai benar-benar dibutuhkan bersama.
-Alias `@/*` menunjuk ke `src/*`. Perhitungan domain trading nantinya di backend.
-Halaman dan aset saat ini masih bawaan Next.js.
+### shadcn/ui dan dependency
 
-## Cara mengerjakan satu fitur
+Integrasi mengikuti [manual installation shadcn/ui](https://ui.shadcn.com/docs/installation/manual):
+`components.json`, alias yang sudah ada, CSS variables pada `globals.css`, serta
+helper `cn` (clsx + tailwind-merge). Komponen UI disalin dari registry resmi
+`new-york-v4`, dengan import `cn` diarahkan ke helper lokal. Komponen dimiliki
+repository dan dapat disesuaikan mengikuti pola shadcn; tidak ada design system
+paralel. Radix mendukung primitives, class-variance-authority mendukung variant,
+lucide-react menyediakan ikon, dan tw-animate-css mendukung utilitas animasi.
 
-1. Mulai dari task kecil: tentukan halaman, perilaku yang diinginkan, dan kriteria
-   selesai. Jika membutuhkan backend, sepakati request, response, dan error API.
-2. Periksa kode yang sudah ada. Buat folder `src/features/<nama-fitur>` hanya
-   untuk fitur yang sedang dikerjakan; gunakan kembali komponen yang sesuai.
-3. Letakkan komponen, tipe, hook, dan pemanggilan API khusus fitur di folder fitur.
-   Untuk fitur sederhana, beberapa file langsung di folder fitur sudah cukup.
-   Tambahkan subfolder ketika jumlah file memang membutuhkannya.
-4. Tambahkan route di `src/app` untuk menampilkan fitur. Route bertugas merangkai
-   halaman; logika khusus fitur tetap berada di folder fitur.
-5. Implementasikan kondisi loading, data kosong, error, validasi input, dan
-   interaksi yang relevan. Validasi frontend membantu UX; backend tetap menjadi
-   sumber validasi dan perhitungan bisnis trading.
-6. Jalankan pemeriksaan di bawah, lalu uji alur normal dan error di browser.
-   Tambahkan test perilaku yang relevan menggunakan Jest dan React Testing Library.
-7. Review perubahan, perbarui dokumentasi jika pola teknis berubah, lalu commit
-   hanya file terkait. Jangan commit `.env`, dependency, atau hasil build.
+React Hook Form + Zod + resolvers dipakai untuk form. `server-only` mencegah
+helper yang membutuhkan konfigurasi internal masuk ke bundle client. Dependency
+fitur dipasang dengan versi exact dan tercatat di `bun.lock`.
 
-Contoh penempatan untuk task trading plan yang membutuhkan form dan API:
+### Konvensi
 
-```text
-src/
-├── app/
-│   └── trading-plan/
-│       └── page.tsx
-└── features/
-    └── trading-plan/
-        ├── components/
-        │   ├── trading-plan-form.tsx
-        │   └── trading-plan-form.test.tsx
-        ├── api/
-        │   └── create-trading-plan.ts
-        └── types.ts
-```
-
-Ini contoh, bukan daftar file yang wajib dibuat sekarang. Hook seperti
-`use-trading-plan.ts` hanya dibuat jika ada perilaku yang perlu dipisahkan.
-`src/lib/api-client.ts` menangani transport HTTP umum; file di `features/.../api`
-menangani endpoint dan data khusus fitur. Jangan membuat lapisan service/helper
-yang hanya meneruskan satu pemanggilan tanpa tanggung jawab tambahan.
-
-## Penamaan dan batas tanggung jawab
-
-- Folder dan file buatan proyek memakai `kebab-case`, misalnya
-  `trading-plan-form.tsx`. Pertahankan nama file khusus framework seperti `page.tsx`.
-- Nama komponen dan tipe memakai `PascalCase`, misalnya `TradingPlanForm` dan
-  `TradingPlan`. Fungsi serta variabel memakai `camelCase`, misalnya `createTradingPlan`.
-- Nama hook diawali `use`, misalnya `useTradingPlan` di `use-trading-plan.ts`.
-- Gunakan `.tsx` untuk file dengan JSX dan `.ts` untuk file TypeScript lainnya.
-- Komponen khusus trading plan tetap di fitur tersebut meskipun digunakan oleh
-  beberapa halaman. Pindahkan ke `components` bersama hanya jika sudah generik.
-- Jangan duplikasi tipe khusus fitur ke `src/types`. Hindari import detail internal
-  fitur lain; pisahkan bagian bersama jika memang dibutuhkan lintas fitur.
-- Secret dan kredensial database tidak boleh berada di kode browser atau variabel
-  `NEXT_PUBLIC_*`. Akses database ditangani backend Go.
-- Ikuti gaya kode yang sudah ada. Belum ada aturan khusus untuk memaksa arrow
-  function menjadi deklarasi `function`, dan belum ada formatter otomatis.
-
-Panduan ini adalah konvensi kerja, bukan aturan yang semuanya diperiksa ESLint.
-Jangan menambah dependency, provider, auth guard, atau folder fitur masa depan
-hanya untuk melengkapi struktur contoh.
+- Alias `@/*` menunjuk ke `src/*`; TypeScript strict.
+- File/folder proyek menggunakan kebab-case; komponen/tipe PascalCase;
+  fungsi/variabel camelCase; hook berawalan `use`. Pertahankan filename framework.
+- JSX memakai `.tsx`, kode TypeScript lain `.ts`.
+- Secret dan konfigurasi internal tidak boleh masuk variabel `NEXT_PUBLIC_*`.
+- Bun adalah package manager. Perubahan `package.json` dan `bun.lock` harus
+  bersama; jangan commit dependency, hasil build, `.env`, atau secret.
+- Ikuti [konvensi bersama](../docs/ai/CONVENTIONS.md) dan perintah di
+  [AGENTS.md](../AGENTS.md). Commit/push hanya atas instruksi user.
 
 ## Pemeriksaan
 
-Dari root repository, saat frontend berjalan:
+Startup container memasang dependency melalui `bun install --frozen-lockfile`.
+Jest dan seluruh dependency form/UI sudah tercatat di manifest/lockfile; tidak
+perlu mengulang instalasi paket satu per satu.
+
+Dari root repository dengan container frontend aktif:
 
 ```powershell
+docker compose exec frontend bun run test
 docker compose exec frontend bun run lint
 docker compose exec frontend bun run typecheck
-docker compose run --rm --no-deps -e NODE_ENV=production frontend bun --bun run build
 ```
 
-Konfigurasi Jest sudah tersedia; lakukan instalasi satu kali di bagian Testing.
-Commit `bun.lock` bersama perubahan `package.json`. Gunakan Bun secara konsisten
-sebagai package manager.
-
-Lint memeriksa aturan kode, typecheck memeriksa tipe, dan build memeriksa apakah
-aplikasi bisa dibangun. Ketiganya tidak menggantikan pengujian perilaku di browser.
-Jika pemeriksaan gagal, perbaiki penyebabnya; jangan mematikan aturan hanya agar lolos.
-
-## Yang sudah tersedia dan yang ditunda
-
-Fondasi yang tersedia: scaffold Next.js, TypeScript strict, ESLint Next.js/TypeScript,
-Tailwind, Bun lockfile, konfigurasi Docker development, dan folder kerja.
-Status lulus lint/typecheck/build perlu dibuktikan dengan menjalankan perintah di atas.
-
-Prettier, Husky, lint-staged, autentikasi, API client, state/query library,
-serta UI bisnis belum disiapkan. Tambahkan bertahap sesuai task. README ini cukup
-untuk petunjuk teknis awal; PRD dan roadmap tetap di luar repository.
-
-## Testing dengan Jest
-
-Jest + React Testing Library menggunakan konfigurasi `next/jest` dan lingkungan
-DOM jsdom. Bun tetap memasang paket. Script test secara eksplisit menjalankan
-Jest dengan Node.js, yang disediakan oleh image Docker frontend.
-Jalankan `bun run test`, bukan `bun test` (runner Bun yang berbeda).
-
-Instalasi satu kali, dari root repository (oleh pengguna):
+Production build memakai volume `.next` yang sama dengan development. Hentikan
+frontend development selama build, lalu jalankan kembali:
 
 ```powershell
-docker compose run --rm --no-deps --build frontend bun add -d jest@30 jest-environment-jsdom@30 @types/jest@30 @testing-library/react@16 @testing-library/dom@10 @testing-library/jest-dom@6
+docker compose stop frontend
+docker compose run --rm --no-deps -e NODE_ENV=production frontend bun --bun run build
+docker compose start frontend
 ```
 
-Perintah ini memperbarui `package.json` dan `bun.lock` serta memasang dependency
-ke volume Docker. Keduanya perlu di-commit bersama. Konfigurasi saja belum cukup
-untuk menjalankan test; dependency belum dipasang oleh asisten.
-Pada clone setelah lockfile diperbarui, gunakan `bun install --frozen-lockfile`
-di container, bukan mengulang `bun add`.
+Jalankan kembali frontend juga bila build gagal. Jangan menjalankan build dan
+server development bersamaan pada cache yang sama. Hasil pemeriksaan aktual
+tercatat di [CURRENT.md](../docs/ai/CURRENT.md) dan [LOG.md](../docs/ai/LOG.md).
 
-Jalankan test tanpa memerlukan server Next.js/backend/database aktif:
+### Testing dengan Jest
+
+Gunakan `bun run test`, bukan `bun test`. Bun memasang paket; script menjalankan
+Jest melalui Node.js yang tersedia dalam image Docker. Alternatif tanpa server
+Next/backend/database aktif, setelah dependency tersedia:
 
 ```powershell
 docker compose run --rm --no-deps frontend bun run test
@@ -149,29 +146,21 @@ docker compose run --rm --no-deps frontend bun run test:watch
 docker compose run --rm --no-deps frontend bun run test:ci
 ```
 
-`test` berjalan sekali; `test:watch` mengulang saat source berubah (`Ctrl+C` untuk
-berhenti). `test:ci` berjalan sekali dengan coverage dan gagal jika test gagal.
-Coverage disimpan di `frontend/coverage/`, tidak ikut Git. Tidak ada opsi
-`passWithNoTests`: suite kosong harus gagal. `test:coverage` tersedia untuk laporan lokal.
+`test:coverage` juga tersedia. Coverage berada di `frontend/coverage/` dan tidak
+ikut Git. Suite kosong harus gagal; jangan menambah `passWithNoTests`.
 
-`tests/home.test.tsx` adalah smoke test scaffold halaman awal, bukan bukti fitur
-bisnis telah benar. Ganti assertion-nya saat halaman berubah. Untuk kode khusus
-fitur, letakkan `*.test.ts(x)` dekat source; skenario lintas komponen di `tests/`.
-Semua test menggunakan alias `@/*` yang sama dengan aplikasi.
+- Schema tests mencakup normalisasi email, input tidak valid, batas panjang Unicode,
+  konfirmasi password, dan perbedaan aturan login/registrasi.
+- Form tests memakai Testing Library dengan role/label untuk validasi setelah
+  interaksi, visibility password, loading, error backend, navigasi, dan logout.
+- Client tests memeriksa kontrak JSON, tidak terkirimnya konfirmasi, credential
+  policy, logout `{}`, dan error generik.
+- Server/proxy tests memakai environment Node untuk cookie filtering, no-store,
+  method/action allowlist, forwarding Origin, body limit, dan kegagalan upstream.
+- Page tests menguji hasil fungsi async page dengan batas auth dimock; ini bukan
+  pengganti verifikasi Next.js runtime dan lifecycle cookie di browser.
 
-Test komponen, hook, dan fungsi khusus fitur berada di
-`src/features/<nama-fitur>/`, bersebelahan dengan file yang diuji.
-Test komponen bersama juga bersebelahan dengan source di `src/components/`.
-Folder `tests/` bukan tempat wajib untuk semua test. Jest mencari file
-`*.test.ts` dan `*.test.tsx` di kedua lokasi tanpa perubahan konfigurasi.
-
-Uji perilaku yang terlihat pengguna, memakai role/label. Untuk fitur baru,
-uji input valid/tidak valid, loading, kosong, sukses, dan error yang relevan.
-Mock batas eksternal seperti API; jangan mock fungsi yang justru sedang diuji.
-Hindari snapshot besar dan assertion terhadap class CSS untuk membuktikan perilaku.
-Coverage adalah petunjuk bagian yang belum diuji, bukan bukti bebas bug.
-
-Layout tidak masuk coverage komponen saat ini. Async Server Components dan alur
-browser nyata memerlukan strategi E2E berikutnya; suite ini belum mencakupnya.
-Lihat [panduan Jest Next.js](https://nextjs.org/docs/app/guides/testing/jest).
-Hasil PASS belum dikonfirmasi sampai perintah dijalankan oleh pengguna.
+Test fitur berada dekat source; test halaman/lintas fitur di `tests`. Mock batas
+API/router, jangan mock fungsi yang sedang diuji. Gunakan assertion perilaku,
+bukan snapshot besar atau class CSS. Test UI, lint, typecheck, dan build tetap
+perlu dilengkapi pemeriksaan lifecycle auth melalui backend/database nyata.

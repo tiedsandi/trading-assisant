@@ -1,142 +1,137 @@
 # Backend
 
-Server HTTP awal menggunakan Go standard library. Modul: `trading-assistant/backend`.
-Koneksi database menggunakan pgx/v5 (pgxpool). Instalasi dependency dilakukan
-pengguna dengan perintah di bagian PostgreSQL. Router chi, sqlc, dan modul bisnis
-belum ditambahkan.
+Go `net/http` API + pgx/v5 + PostgreSQL. Module: `trading-assistant/backend`.
 
 ## Struktur
 
-- `cmd/api/main.go`: entry point, logging JSON, HTTP timeout, graceful shutdown.
-- `internal/config/config.go`: membaca environment dan memvalidasi port HTTP.
-- `internal/app/router.go`: merangkai `/health` dan `/ready`.
-- `internal/platform/database`: konfigurasi pool, startup ping, dan test konfigurasi.
-- `tests/integration`: test database nyata, diaktifkan dengan build tag `integration`.
-- `internal/app/router_test.go`: pengujian endpoint dan metode/path yang tidak sesuai.
-- `../docker/backend`: Dockerfile dan pengaturan Air.
+- `cmd/api`: config, startup, HTTP timeouts, JSON lifecycle logs, shutdown.
+- `cmd/migrate`: CLI migration `up` dan `status`.
+- `internal/app`: komposisi route; `/health` dan `/ready` tetap tersedia.
+- `internal/config`: environment, port, allowlist Origin.
+- `internal/modules/auth`: handler, password/session primitives, PostgreSQL store, middleware.
+- `internal/platform/database`: pool maksimal 10 koneksi, validasi URL dan startup ping.
+- `db/migrations`: SQL Goose yang di-embed oleh `db/migrate.go`.
+- `tests/integration`: lifecycle auth dan readiness dengan PostgreSQL nyata.
 
-Folder `internal/modules/<fitur>` dan `db/` baru dibuat
-saat implementasinya dimulai. Logika bisnis nantinya berada di modul, bukan `main.go`.
-SQL/migration/sqlc ditempatkan di `db/` saat integrasi database dibuat.
-
-## Menjalankan (oleh pengguna)
+## Menjalankan dan migration
 
 Dari root repository dengan Docker Desktop aktif:
 
-```powershell
+```sh
 docker compose up -d --build backend
 docker compose logs -f backend
+docker compose run --rm migrate go run -mod=readonly ./cmd/migrate status
+docker compose run --rm migrate go run -mod=readonly ./cmd/migrate up
 ```
 
-Compose ikut menjalankan PostgreSQL dan menunggu healthcheck database.
-`Ctrl+C` hanya keluar dari tampilan log. Cek API:
+Compose menunggu PostgreSQL sehat, menjalankan service `migrate` sekali, lalu
+menyalakan backend. API sendiri tidak mengubah schema pada startup. Di luar
+Compose, set `DATABASE_URL` dan jalankan `go run ./cmd/migrate up` dari `backend/`
+sebagai langkah deployment sebelum menjalankan API.
 
-```powershell
-Invoke-RestMethod http://localhost:8080/health
-```
+Goose v3 menyimpan versi di `goose_db_version`, menjalankan tiap migration SQL
+secara transaksional, dan memakai PostgreSQL advisory lock agar runner paralel
+tidak menerapkan migration yang sama bersamaan. `up` yang diulang aman.
+Tambahkan migration baru dengan nomor naik, misalnya `00002_description.sql`,
+dan anotasi `-- +goose Up` / `-- +goose Down`. Jangan mengubah migration yang sudah
+diterapkan. CLI sengaja hanya menyediakan `up` dan `status`; rollback SQL tersedia
+untuk review, tetapi perubahan produksi sebaiknya melalui migration koreksi.
 
-Hasil: `status` bernilai `ok`. `/health` adalah liveness: proses HTTP berjalan.
-Endpoint ini tidak memeriksa koneksi database. `/ready` menjalankan ping database:
-HTTP 200 dengan `status: ready`, atau HTTP 503 dengan `status: not_ready`.
-`DATABASE_URL` dari Compose sekarang digunakan; CORS belum diimplementasikan.
+`00001_auth.sql` membuat `users` (UUID, email unik/normalized, password hash,
+created/updated timestamps) dan `sessions` (UUID, user FK cascade, digest unik
+32-byte, waktu dibuat/kedaluwarsa). Index sesi tersedia untuk user dan expiry.
 
-Konfigurasi yang digunakan: `APP_ENV` (default `development`), `HTTP_HOST`
-(default `0.0.0.0`), dan `HTTP_PORT` (default `8080`). Port host ditentukan oleh
-`BACKEND_PORT` di `.env` root. HTTP_PORT adalah port di dalam container.
+## HTTP API
 
-Air membangun `./cmd/api` dan melakukan reload saat source Go berubah.
-Untuk mencoba, ubah respons health sementara, simpan, cek log rebuild dan
-respons endpoint, lalu kembalikan perubahan. Jika mengubah kontrak permanen,
-perbarui test-nya juga.
+| Endpoint | Perilaku |
+| --- | --- |
+| `GET /health` | Liveness 200, tanpa database. |
+| `GET /ready` | Ping database dengan timeout 2 detik; 200 / 503. |
+| `POST /auth/register` | JSON email/password; 201 user + session cookie langsung. |
+| `POST /auth/login` | JSON email/password; 200 user + session cookie baru. |
+| `GET /auth/me` | 200 user dari session aktif; 401 jika cookie hilang/invalid/expired/revoked. |
+| `POST /auth/logout` | JSON `{}`; hapus session, clear cookie, 204. Idempotent. |
+
+Sukses auth mengembalikan `{ "user": { "id", "email", "created_at" } }`.
+Error menggunakan `{ "error": { "code", "message" } }`. Auth selalu `no-store`.
+JSON body dibatasi 8 KiB; unknown fields, non-object, dan trailing data ditolak.
+Invalid email/password registration: 422; duplicate: 409 `registration_unavailable`
+dengan pesan umum untuk mencoba login/email lain. Status ini tetap memungkinkan
+inferensi akun terdaftar; v1 memilih feedback yang usable tanpa endpoint lookup email.
+Login unknown email dan password salah sama-sama 401 `invalid_credentials`.
+Kegagalan penyimpanan mengembalikan 503 tanpa detail database.
+
+Gunakan `authHandler.RequireUser(handler)` untuk route backend yang dilindungi.
+Di dalam handler, panggil `auth.UserFromContext(r.Context())`; gunakan `User.ID`
+sebagai FK/filter data milik user. Lookup session dibatasi 5 detik, sementara
+handler selanjutnya tetap memakai context request asal.
+
+## Password, session, cookie, CSRF
+
+- Email di-trim dan lowercase, memakai bentuk email ASCII praktis; tidak menghapus
+  `+tag` atau titik. Batas 254 byte total, local-part 64, domain label 63.
+- Password 8–128 Unicode codepoints; tanpa aturan komposisi wajib, tanpa trim.
+  Hash memakai `alexedwards/argon2id` / `x/crypto`, Argon2id 64 MiB, 3 iterasi,
+  2 lanes, salt acak 16 byte, hasil 32 byte. Unknown email tetap memverifikasi
+  dummy hash agar biaya hashing setara dengan password salah. Maksimal dua operasi
+  password bersamaan per proses; kelebihan mendapat 429 + `Retry-After: 1`.
+- Token session: `crypto/rand` 32 byte, base64url tanpa padding. Database hanya
+  menyimpan SHA-256 dari token. Register menyimpan user + session dalam satu
+  transaksi; login membuat session baru. Setiap request memeriksa expiry database.
+- Masa berlaku tetap 7 hari, tanpa sliding renewal. Logout menghapus record sebelum
+  menghapus cookie; jika revocation gagal, respons 503 dan cookie tetap ada.
+- Cookie development: `ta_session`; production: `__Host-ta_session`. Keduanya
+  `HttpOnly`, `SameSite=Lax`, `Path=/`, tanpa `Domain`, Max-Age 604800 dan Expires
+  konsisten. Production wajib `Secure`; penghapusan memakai nama/path/flags sama.
+- Browser mengakses route Next.js same-origin `/api/auth/*`; Next meneruskan cookie
+  dan **Origin asli** ke Go dan meneruskan `Set-Cookie` ke browser. Tidak ada CORS
+  allow headers. Token tidak digunakan di localStorage/sessionStorage.
+- Semua POST, termasuk register/login/logout, wajib Origin persis dalam
+  `AUTH_ALLOWED_ORIGINS` dan `Content-Type: application/json`. Missing/null/unknown
+  Origin ditolak. Ini melindungi cookie auth dan login dari CSRF, ditambah SameSite.
+  Server-to-server callers juga wajib mengirim Origin yang dikonfigurasi.
+- Jangan log password, hash, token, cookie, atau database credentials.
+
+Expired session tidak dipakai untuk autentikasi. Pembersihan berkala tabel bisa
+menjalankan `DELETE FROM sessions WHERE expires_at <= CURRENT_TIMESTAMP` dalam
+operasional database; scheduler cleanup bukan bagian v1.
+
+## Environment
+
+- `APP_ENV`: `development` (default), `test`, atau `production`; nilai lain ditolak.
+- `HTTP_HOST`: `0.0.0.0`; `HTTP_PORT`: `8080` (port internal container).
+- `DATABASE_URL`: wajib; dibaca dari environment proses, bukan file `.env` backend.
+- `AUTH_ALLOWED_ORIGINS`: daftar Origin dipisahkan koma. Development default
+  `http://localhost:3000`. Production wajib dikonfigurasi eksplisit dan seluruh
+  Origin harus HTTPS tanpa path/query/fragment/credentials/wildcard.
+
+Production memerlukan HTTPS pada origin frontend dan APP_ENV=production pada Go.
+Next.js meneruskan kedua nama cookie; backend menentukan nama sesuai environment.
+Air memantau source Go dan SQL embedded; reload API tidak menjalankan migration.
 
 ## Pemeriksaan
 
-Saat backend berjalan, jalankan dari root:
+Dari root saat backend berjalan:
 
-```powershell
-docker compose exec backend gofmt -w cmd internal
-docker compose exec backend go test ./...
+```sh
+docker compose exec backend go test -mod=readonly -count=1 ./...
 docker compose exec backend go vet ./...
+docker compose exec backend gofmt -l cmd internal tests db
 ```
 
-Test tidak membutuhkan database. Hasil pengujian belum dikonfirmasi sampai
-perintah dijalankan. Tidak perlu menjalankan `go mod init` lagi.
+Format dengan mengganti `-l` menjadi `-w`. Unit tests mencakup input/JSON/Origin,
+hashing, cookie, middleware, failure handling, session, login generik, dan logout.
 
-## Testing bawaan Go
+Integration test harus menggunakan Compose test **secara terpisah**:
 
-Backend menggunakan paket `testing` dan `net/http/httptest` bawaan Go, tanpa
-Jest atau dependency test tambahan. Nama test berakhiran `_test.go` dan berada
-di package yang sama dengan kode yang diuji.
-
-Suite saat ini mencakup respons JSON `/health`, penolakan metode/path yang tidak
-sesuai, konfigurasi default/override, port tidak valid, batas port, dan alamat IPv6.
-Test environment memakai `t.Setenv` agar perubahan dipulihkan setelah test.
-
-Dari root repository, bisa dijalankan tanpa server atau database aktif:
-
-```powershell
-docker compose run --rm --no-deps backend go test -count=1 -v ./...
-docker compose run --rm --no-deps backend go test -count=1 -coverprofile=coverage.out ./...
-docker compose run --rm --no-deps backend go tool cover -func=coverage.out
-docker compose run --rm --no-deps backend go vet ./...
-```
-
-`-count=1` menghindari hasil test dari cache. `coverage.out` tidak ikut Git.
-Air melakukan rebuild aplikasi, bukan menjalankan test otomatis; ulangi test
-setelah perubahan kode. Entry point dan graceful shutdown belum dicakup suite ini.
-Test handler belum menguji koneksi jaringan Docker maupun database PostgreSQL.
-
-Saat koneksi database dibuat, tambahkan integration test terhadap database test
-terpisah. Saat perhitungan trading dibuat, uji batas nilai, rounding, dan input
-tidak valid dengan hasil yang ditentukan independen dari implementasi.
-
-## PostgreSQL dan readiness
-
-Dari root repository, pasang dependency sekali (oleh pengguna):
-
-```powershell
-docker compose run --rm --no-deps backend go get github.com/jackc/pgx/v5/pgxpool
-docker compose run --rm --no-deps backend go mod tidy
-docker compose run --rm --no-deps backend gofmt -w cmd internal tests
-docker compose run --rm --no-deps backend go test -count=1 -v ./...
-docker compose run --rm --no-deps backend go vet ./...
-docker compose up -d backend
-Invoke-RestMethod http://localhost:8080/ready
-```
-
-Commit `go.mod` dan `go.sum` hasil instalasi bersama kode. Sebelum dependency
-dipasang, kode baru belum dapat dikompilasi. Tidak perlu mengulang `go mod init`.
-Jika Air belum membangun ulang setelah instalasi, jalankan `docker compose restart backend`.
-
-API mewajibkan `DATABASE_URL`; Compose sudah menyediakannya dengan hostname
-`postgres` dan port internal `5432`. Untuk Go yang dijalankan langsung di host,
-gunakan `localhost` dan port publish PostgreSQL di `.env` root (misalnya `15432`).
-Aplikasi membaca environment proses, tidak memuat file `.env` backend otomatis.
-Jangan mencetak URL database atau kredensial ke log.
-
-Startup memvalidasi URL dan ping dalam batas 5 detik; kegagalan membuat API keluar.
-Pool dibatasi 10 koneksi dan ditutup setelah server berhenti. Readiness memakai
-context request dengan batas 2 detik. Jika database terputus setelah startup,
-`/health` tetap 200 dan `/ready` menjadi 503; setelah koneksi pulih, readiness
-dapat kembali 200. Belum ada migration atau tabel bisnis pada tahap ini.
-
-## Integration test terisolasi
-
-Gunakan file Compose test secara mandiri, bukan digabung dengan compose development:
-
-```powershell
+```sh
 docker compose -p trading-assistant-tests -f compose.test.yml up --build --abort-on-container-exit --exit-code-from backend-test
 docker compose -p trading-assistant-tests -f compose.test.yml down
 ```
 
-Jalankan setelah `go get` dan `go mod tidy` di atas. PostgreSQL test tidak
-memublikasikan port, memakai network terpisah dan penyimpanan sementara (tmpfs).
-Perintah `down` hanya membersihkan container/network proyek test; data development
-tidak disentuh. Cache Go test tetap tersimpan. Dependency test dapat diunduh saat run.
-
-Suite integration memeriksa koneksi nyata, `SELECT 1`, readiness sukses, readiness
-503 setelah pool ditutup, dan liveness yang tetap sukses. Tidak menulis tabel.
-Ini belum mensimulasikan putus jaringan atau recovery database. Tanpa tag
-`integration`, unit test tidak membutuhkan database. Dengan tag tersebut,
-`TEST_DATABASE_URL` wajib ada; tidak ada skip diam-diam jika konfigurasi hilang.
-Hasil test kode baru belum diverifikasi sampai pengguna menjalankan perintahnya.
+Database test memakai tmpfs dan network sendiri, tanpa host port. Test menerapkan
+migration yang sama, memeriksa idempotensi, uniqueness concurrent, rollback
+registration saat session gagal, persistence hash, expiry/revocation, isolasi user,
+protected backend, serta `/health` dan `/ready`. `TEST_DATABASE_URL` wajib dengan
+tag `integration`; tidak ada skip diam-diam. Test hanya membersihkan user fixture
+miliknya. Tanpa tag tersebut, suite tidak membutuhkan database.

@@ -6,8 +6,12 @@ import (
 	"time"
 )
 
-// NewHandler provides the initial liveness endpoint. It does not check the database.
-func NewHandler(checkDatabase func(context.Context) error) http.Handler {
+type RouteRegistrar interface {
+	RegisterRoutes(*http.ServeMux)
+}
+
+// NewHandler composes health/readiness and optional feature routes.
+func NewHandler(checkDatabase func(context.Context) error, features ...RouteRegistrar) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -25,5 +29,8 @@ func NewHandler(checkDatabase func(context.Context) error) http.Handler {
 		}
 		_, _ = w.Write([]byte("{\"status\":\"ready\"}\n"))
 	})
+	for _, feature := range features {
+		feature.RegisterRoutes(mux)
+	}
 	return mux
 }

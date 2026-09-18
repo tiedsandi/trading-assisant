@@ -12,6 +12,7 @@ import (
 
 	"trading-assistant/backend/internal/app"
 	"trading-assistant/backend/internal/config"
+	"trading-assistant/backend/internal/modules/auth"
 	"trading-assistant/backend/internal/platform/database"
 )
 
@@ -37,10 +38,16 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	defer pool.Close()
+	authHandler, err := auth.New(pool, auth.Options{
+		SecureCookie: cfg.Environment == "production", AllowedOrigins: cfg.AuthAllowedOrigins,
+	})
+	if err != nil {
+		return err
+	}
 
 	server := &http.Server{
 		Addr:              cfg.Address(),
-		Handler:           app.NewHandler(pool.Ping),
+		Handler:           app.NewHandler(pool.Ping, authHandler),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      15 * time.Second,

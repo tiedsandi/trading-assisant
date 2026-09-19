@@ -1,5 +1,10 @@
 # Development Log
 
+## 2026-09-19 — Markdown handoff refresh
+- Updated AUTH-V1-HANDOFF.md with the four implementation commits and the unresolved
+  Docker/runtime blocker. Kept 2026-09-16 test results explicitly historical.
+- Documentation-only update; no application tests rerun. Report edits are uncommitted.
+
 ## 2026-09-15 — Shared AI workflow baseline
 
 ### Completed

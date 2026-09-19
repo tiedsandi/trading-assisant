@@ -27,7 +27,8 @@ apply/reapply/status; Compose configuration; real HTTP lifecycle/proxy/CSRF/sess
 smoke; browser registration/login/logout/redirects and desktop/mobile layouts.
 Browser also confirmed invalid-submit focus after the accessibility fix.
 Test-only accounts were deleted, isolated test containers/network removed.
-No commit or push. See AUTH-V1-HANDOFF.md for full acceptance checklist.
+Implementation committed in four parts: docs, backend, chore and frontend (HEAD c24b8a2).
+No push performed in this task. See AUTH-V1-HANDOFF.md for acceptance checklist and handoff.
 
 ## Local Runtime
 As of 2026-09-18, Docker Engine is unavailable and the development stack is not running.

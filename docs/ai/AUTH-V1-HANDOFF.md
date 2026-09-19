@@ -1,10 +1,14 @@
 # Handoff Report
 
-Tanggal verifikasi akhir: 2026-09-16 (Asia/Jakarta).
+Terakhir diperbarui: 2026-09-19 (Asia/Jakarta).
+Verifikasi lengkap terakhir yang berhasil: 2026-09-16.
 
 ## 1. Status
 
-**DONE** — seluruh acceptance criteria yang berlaku terpenuhi.
+Implementasi Authentication v1 selesai dan sudah di-commit. Verifikasi lengkap pada
+2026-09-16 lulus, tetapi laporan login/register gagal dari pengguna belum dikonfirmasi
+selesai. Pengecekan pada 2026-09-18 terhambat Docker Engine yang gagal menyala.
+Status runtime belum diperiksa ulang pada pembaruan dokumentasi 2026-09-19 ini.
 
 ## 2. What Was Implemented
 
@@ -120,6 +124,8 @@ Overload pekerjaan hashing memberi 429; backend unavailable 503, kegagalan proxy
 
 ## 6. Verification
 
+Hasil PASS berikut berasal dari 2026-09-16, bukan konfirmasi kondisi runtime saat ini.
+
 - `docker compose config --quiet`: PASS.
 - `docker compose up -d --build backend` setelah PATH/port lokal diperbaiki: PASS.
 - Migration up, status, reapply tanpa perubahan: PASS.
@@ -146,14 +152,15 @@ Overload pekerjaan hashing memberi 429; backend unavailable 503, kegagalan proxy
 Masalah awal yang sudah diperbaiki: executable/credential-helper Docker belum ada di PATH,
 `.env` hilang dan port 5432 bentrok, tipe body proxy, typings locator test, dan fokus field
 saat validasi async. HTTP harness disesuaikan dengan redirect HTML streaming Next.js;
-redirect juga diverifikasi langsung di browser. Tidak ada kegagalan pemeriksaan tersisa.
+redirect juga diverifikasi langsung di browser. Saat verifikasi 2026-09-16 selesai,
+tidak ada kegagalan pemeriksaan tersisa. Kendala berikutnya tercatat di bagian 9.
 
 Verifikasi browser memakai HTTP lokal; production Secure-cookie flags/config diuji otomatis.
 Deployment HTTPS publik tidak dilakukan karena tidak termasuk scope.
 
 ## 7. Acceptance Criteria
 
-Checklist berikut menyalin semua acceptance criteria dari instruksi. Seluruhnya terverifikasi;
+Checklist berikut menyalin semua acceptance criteria dari instruksi. Seluruhnya terverifikasi pada 2026-09-16;
 indikator kualitas password tambahan bersifat opsional dan tidak ditambahkan.
 ### Registration
 
@@ -277,13 +284,27 @@ indikator kualitas password tambahan bersifat opsional dan tidak ditambahkan.
 
 ## 9. Issues / Remaining Work
 
-None dalam scope Authentication v1. Tidak ada trading/exchange, reset password, email
-verification, OAuth, 2FA atau roles yang ditambahkan. Stack development ditinggalkan berjalan.
+- Pada pengecekan 2026-09-18, Docker Engine tidak tersedia; backend dan database tidak berjalan.
+  Docker Desktop gagal mengakses/rename socket runtime `sailor-ingest.sock`.
+  Stop/start resmi tidak memulihkan layanan. Penghapusan socket sementara ditolak
+  pemeriksaan keamanan otomatis; tidak ada file atau volume Docker yang dihapus.
+- Port 3000 saat itu dipakai proyek `asietex-erp-web`. `.env` lokal yang diabaikan Git
+  sudah memakai `FRONTEND_PORT=3001` dan `AUTH_ALLOWED_ORIGINS=http://localhost:3001`.
+  Port backend/database tetap 8080/15432. Aplikasi belum berhasil dijalankan di port 3001.
+- Lanjutkan dengan memulihkan Docker Engine, menjalankan `docker compose up -d --build`,
+  lalu menguji register, login, logout dan route guards di `http://localhost:3001`.
+  Keluhan pengguna belum boleh ditandai selesai sebelum alur tersebut berhasil.
+- Tidak ada trading/exchange, reset password, email verification, OAuth, 2FA atau roles
+  yang ditambahkan. Tidak ada deployment production.
 
 ## 10. Git
 
-- Commit: NOT CREATED
-- Push: NOT PERFORMED
+- Branch: `feature/auth`.
+- `74dde71` — `docs: document authentication v1 workflow`
+- `d5397e2` — `feat(backend): add session-based authentication`
+- `5875307` — `chore: configure auth migrations and local services`
+- `c24b8a2` — `feat(frontend): add authentication flows and dashboard`
+- Push tidak dilakukan dalam task ini. Pembaruan laporan 2026-09-19 belum di-commit.
 
 ## 11. Suggested Review
 

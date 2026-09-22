@@ -62,3 +62,26 @@
 - Live auth/browser/tests could not be rerun because Docker remains unavailable.
   Prior 2026-09-16 passing results are historical, not current runtime verification.
 - Next: recover Docker, start Compose, and verify auth lifecycle on localhost:3001.
+
+## 2026-09-22 — Authentication v1 status resolved (AUTH-V1-STATUS-UPDATE / r1)
+- Owner confirmed Docker recovery and successful manual register, login, authenticated
+  dashboard access, logout and route guards on 2026-09-22 (user-reported manual evidence).
+- Closed the previous Docker blocker and register/login failure report. The 2026-09-18
+  investigation above remains historical; full 2026-09-16 verification remains historical.
+- Follow-ups, not local auth blockers: specific frontend messaging for backend registration
+  validation 422; login rate limiting per account/IP or ingress before public deployment;
+  expired-session row cleanup for database maintenance. Expired sessions are already rejected.
+  Rate limiting and cleanup need separate deployment/operations tasks.
+- Documentation-only update; no application tests or independent runtime checks performed.
+  Reviewed scoped diff, stale-status search and git diff --check. No commit or push.
+
+## 2026-09-22 — Linear perpetual risk domain foundation (RISK-001 / r1)
+- Added a pure backend risk module for USDT-margined linear perpetual LONG/SHORT sizing.
+  Implements policy bounds, adverse fill costs, quantity step floor, exact outputs and
+  aggregate field/code validation errors; no API, UI, database or exchange integration.
+- User selected exact `math/big.Rat` arithmetic and aggregate field errors. This avoids a
+  new dependency and preserves repeating division results as exact fractions; presentation
+  formatting remains deferred. No financial path uses binary floating point.
+- PASS: focused risk tests, full backend tests and go vet. Focused package gofmt output is
+  empty. Repository-wide gofmt lists pre-existing non-risk files; RISK-001 did not modify them.
+- Preserved uncommitted Authentication v1 status documentation. No commit or push.

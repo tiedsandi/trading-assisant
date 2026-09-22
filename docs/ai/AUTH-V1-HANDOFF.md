@@ -1,14 +1,17 @@
 # Handoff Report
 
-Terakhir diperbarui: 2026-09-19 (Asia/Jakarta).
+Terakhir diperbarui: 2026-09-22 (Asia/Jakarta).
 Verifikasi lengkap terakhir yang berhasil: 2026-09-16.
 
 ## 1. Status
 
 Implementasi Authentication v1 selesai dan sudah di-commit. Verifikasi lengkap pada
-2026-09-16 lulus, tetapi laporan login/register gagal dari pengguna belum dikonfirmasi
-selesai. Pengecekan pada 2026-09-18 terhambat Docker Engine yang gagal menyala.
-Status runtime belum diperiksa ulang pada pembaruan dokumentasi 2026-09-19 ini.
+2026-09-16 lulus dan tetap merupakan bukti historis. Pada 2026-09-22 pemilik mengonfirmasi
+Docker sudah pulih dan pengujian manual register, login, dashboard terautentikasi,
+logout serta route guard berhasil (user-reported manual evidence).
+Laporan kegagalan register/login dan blocker Docker sebelumnya dinyatakan selesai.
+Agent tidak menjalankan ulang application tests atau memverifikasi runtime secara
+independen dalam task pembaruan dokumentasi ini.
 
 ## 2. What Was Implemented
 
@@ -123,6 +126,10 @@ Overload pekerjaan hashing memberi 429; backend unavailable 503, kegagalan proxy
 `/health` dan `/ready` tetap memiliki perilaku sebelumnya.
 
 ## 6. Verification
+
+Bukti manual terbaru, 2026-09-22: pemilik melaporkan register, login, akses dashboard
+terautentikasi, logout dan route guard berhasil setelah Docker pulih. Ini bukti manual
+dari pengguna, bukan hasil baru pengujian otomatis atau browser oleh agent.
 
 Hasil PASS berikut berasal dari 2026-09-16, bukan konfirmasi kondisi runtime saat ini.
 
@@ -284,16 +291,14 @@ indikator kualitas password tambahan bersifat opsional dan tidak ditambahkan.
 
 ## 9. Issues / Remaining Work
 
-- Pada pengecekan 2026-09-18, Docker Engine tidak tersedia; backend dan database tidak berjalan.
-  Docker Desktop gagal mengakses/rename socket runtime `sailor-ingest.sock`.
-  Stop/start resmi tidak memulihkan layanan. Penghapusan socket sementara ditolak
-  pemeriksaan keamanan otomatis; tidak ada file atau volume Docker yang dihapus.
-- Port 3000 saat itu dipakai proyek `asietex-erp-web`. `.env` lokal yang diabaikan Git
-  sudah memakai `FRONTEND_PORT=3001` dan `AUTH_ALLOWED_ORIGINS=http://localhost:3001`.
-  Port backend/database tetap 8080/15432. Aplikasi belum berhasil dijalankan di port 3001.
-- Lanjutkan dengan memulihkan Docker Engine, menjalankan `docker compose up -d --build`,
-  lalu menguji register, login, logout dan route guards di `http://localhost:3001`.
-  Keluhan pengguna belum boleh ditandai selesai sebelum alur tersebut berhasil.
+- Blocker Docker dan keluhan register/login selesai berdasarkan konfirmasi manual
+  pemilik pada 2026-09-22. Investigasi 2026-09-18 dipertahankan di LOG.md sebagai histori.
+- Follow-up teknis, bukan blocker auth lokal: frontend belum memetakan respons validasi
+  registrasi backend 422 ke pesan khusus.
+- Sebelum deployment publik, tambahkan rate limiting login per akun/IP atau ingress.
+  Implementasinya memerlukan task terpisah sesuai topologi deployment.
+- Cleanup baris sesi kedaluwarsa diperlukan untuk maintenance database; autentikasi
+  sudah menolak sesi kedaluwarsa. Jadwalkan sebagai task operasional terpisah.
 - Tidak ada trading/exchange, reset password, email verification, OAuth, 2FA atau roles
   yang ditambahkan. Tidak ada deployment production.
 
@@ -304,7 +309,8 @@ indikator kualitas password tambahan bersifat opsional dan tidak ditambahkan.
 - `d5397e2` — `feat(backend): add session-based authentication`
 - `5875307` — `chore: configure auth migrations and local services`
 - `c24b8a2` — `feat(frontend): add authentication flows and dashboard`
-- Push tidak dilakukan dalam task ini. Pembaruan laporan 2026-09-19 belum di-commit.
+- Base revision task dokumentasi 2026-09-22: `7d04e1a53898c2c9c0e43afec25e40e431c884ab`.
+- Tidak ada commit/push dalam task ini; pembaruan status 2026-09-22 belum di-commit.
 
 ## 11. Suggested Review
 

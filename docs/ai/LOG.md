@@ -1,5 +1,13 @@
 # Development Log
 
+## 2026-09-19 — Planner/reviewer workflow skill
+- Added reusable planner-reviewer skill with instruction and handoff Markdown templates;
+  installed a copy in personal Codex skills. No ChatGPT web installation performed.
+- Stable acceptance IDs, evidence-aware review decisions and bounded correction cycles
+  preserve the planning → implementation → handoff → review workflow.
+- Bundled validator could not run because Python lacks PyYAML. Used direct structure,
+  reference and installed-copy checks instead; no application tests needed or run.
+
 ## 2026-09-19 — Markdown handoff refresh
 - Updated AUTH-V1-HANDOFF.md with the four implementation commits and the unresolved
   Docker/runtime blocker. Kept 2026-09-16 test results explicitly historical.

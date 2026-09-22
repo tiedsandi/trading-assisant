@@ -44,6 +44,10 @@ add that directory to the command process PATH when Docker is absent from PATH.
 No production deployment performed; Secure cookie behavior covered by backend tests.
 
 ## Scope / Next
+Reusable planning/review skill and coding-brief/handoff templates are maintained in
+`docs/ai/skills/planner-reviewer/`; a copy is installed in personal Codex skills.
+This does not install the skill into ChatGPT web. Application runtime was not rechecked
+during this workflow-only change (2026-09-19).
 No exchange connections, OAuth, verification/reset flows, roles, or trading features.
 Choose the next product feature; scope owned records using the authenticated user UUID.
 Next: restore Docker Engine, start Compose, then recheck registration/login/logout at localhost:3001.
